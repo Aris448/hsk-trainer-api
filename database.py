@@ -10,28 +10,24 @@ print(repr(raw_content))
 print("---конец---")
 # Ручной парсер .env вместо python-dotenv — на случай проблем с кодировкой
 def load_env_manually(filepath=".env"):
+    """Локально читает .env вручную, если файл существует. На сервере (Railway) переменные уже в os.environ."""
     env_vars = {}
-    with open(filepath, "r", encoding="utf-8-sig") as f:  # utf-8-sig убирает BOM-метку, если она есть
-        for line in f:
-            line = line.strip()
-            if not line or line.startswith("#") or "=" not in line:
-                continue
-            key, value = line.split("=", 1)
-            env_vars[key.strip()] = value.strip()
+    if os.path.exists(filepath):
+        with open(filepath, "r", encoding="utf-8-sig") as f:
+            for line in f:
+                line = line.strip()
+                if not line or line.startswith("#") or "=" not in line:
+                    continue
+                key, value = line.split("=", 1)
+                env_vars[key.strip()] = value.strip()
     return env_vars
 
-env = load_env_manually()
+
+_local_env = load_env_manually()
+env = {**os.environ, **_local_env}  # локальный .env имеет приоритет при разработке
 
 url = env.get("SUPABASE_URL")
 key = env.get("SUPABASE_SERVICE_KEY")
-
-print("URL:", repr(url))
-print("KEY:", repr(key))
-
-if not url or not key:
-    raise ValueError("SUPABASE_URL или SUPABASE_SERVICE_KEY не найдены — проверь .env")
-
-supabase: Client = create_client(url, key)
 
 
 def get_or_create_user(telegram_id: int, username: str, first_name: str):
