@@ -3,13 +3,6 @@ import datetime
 from supabase import create_client, Client
 from fsrs import Scheduler, Card, Rating
 
-with open(".env", "r", encoding="utf-8-sig") as f:
-    raw_content = f.read()
-print("СЫРОЕ СОДЕРЖИМОЕ .env:")
-print(repr(raw_content))
-print("---конец---")
-# Ручной парсер .env вместо python-dotenv — на случай проблем с кодировкой
-import os
 
 def load_env_manually(filepath=".env"):
     """Локально читает .env вручную, если файл существует. На сервере (Railway) переменные уже в os.environ."""
@@ -31,57 +24,6 @@ env = {**os.environ, **_local_env}
 url = env.get("SUPABASE_URL")
 key = env.get("SUPABASE_SERVICE_KEY")
 
-
-def get_or_create_user(telegram_id: int, username: str, first_name: str):
-    existing = supabase.table("users").select("id").eq("telegram_id", telegram_id).execute()
-    if existing.data:
-        return existing.data[0]["id"]
-
-    new_user = supabase.table("users").insert({
-        "telegram_id": telegram_id,
-        "username": username,
-        "first_name": first_name
-    }).execute()
-    return new_user.data[0]["id"]
-
-
-def get_due_cards(user_id: str):
-    due = supabase.table("user_progress") \
-        .select("*, cards(*)") \
-        .eq("user_id", user_id) \
-        .lte("due_date", "now()") \
-        .execute()
-    return due.data
-
-
-if __name__ == "__main__":
-    user_id = get_or_create_user(123456789, "test_user", "Test")
-    print("User ID:", user_id)
-
-    due = get_due_cards(user_id)
-    print("Карточек к повторению:", len(due))
-
-
-def load_env_manually(filepath=".env"):
-    """Локально читает .env вручную, если файл существует. На сервере (Railway) переменные уже в os.environ."""
-    env_vars = {}
-    if os.path.exists(filepath):
-        with open(filepath, "r", encoding="utf-8-sig") as f:
-            for line in f:
-                line = line.strip()
-                if not line or line.startswith("#") or "=" not in line:
-                    continue
-                key, value = line.split("=", 1)
-                env_vars[key.strip()] = value.strip()
-    return env_vars
-
-
-_local_env = load_env_manually()
-env = {**os.environ, **_local_env}  # локальный .env имеет приоритет при разработке
-
-url = env.get("SUPABASE_URL")
-key = env.get("SUPABASE_SERVICE_KEY")
-
 supabase: Client = create_client(url, key)
 scheduler = Scheduler()
 
@@ -98,6 +40,15 @@ def get_or_create_user(telegram_id: int, username: str, first_name: str):
     return new_user.data[0]["id"]
 
 
+def get_user_level(user_id: str):
+    result = supabase.table("users").select("hsk_level").eq("id", user_id).execute()
+    return result.data[0]["hsk_level"] if result.data else 1
+
+
+def set_user_level(user_id: str, level: int):
+    supabase.table("users").update({"hsk_level": level}).eq("id", user_id).execute()
+
+
 def get_next_card(user_id: str):
     """Берёт карточку, которая уже due, либо новую — строго в рамках текущего уровня юзера."""
     level = get_user_level(user_id)
@@ -108,7 +59,6 @@ def get_next_card(user_id: str):
         .lte("due_date", datetime.datetime.utcnow().isoformat()) \
         .execute()
 
-    # фильтруем due-карточки по уровню (join не даёт фильтровать по вложенной таблице напрямую)
     due_filtered = [row for row in due.data if row["cards"]["hsk_level"] == level]
     if due_filtered:
         return due_filtered[0]
@@ -138,7 +88,6 @@ def submit_review(user_id: str, card_id: str, rating_value: int):
     progress = supabase.table("user_progress").select("*").eq("user_id", user_id).eq("card_id", card_id).execute()
 
     if not progress.data:
-        # записи ещё нет — создаём с дефолтными значениями
         supabase.table("user_progress").insert({
             "user_id": user_id,
             "card_id": card_id
@@ -169,6 +118,7 @@ def submit_review(user_id: str, card_id: str, rating_value: int):
         "predicted_retrievability": scheduler.get_card_retrievability(fsrs_card)
     }).execute()
 
+
 def get_card_by_id(card_id: str):
     result = supabase.table("cards").select("*").eq("id", card_id).execute()
     if result.data:
@@ -176,10 +126,9 @@ def get_card_by_id(card_id: str):
     return None
 
 
-def get_user_level(user_id: str):
-    result = supabase.table("users").select("hsk_level").eq("id", user_id).execute()
-    return result.data[0]["hsk_level"] if result.data else 1
+if __name__ == "__main__":
+    user_id = get_or_create_user(123456789, "test_user", "Test")
+    print("User ID:", user_id)
 
-
-def set_user_level(user_id: str, level: int):
-    supabase.table("users").update({"hsk_level": level}).eq("id", user_id).execute()
+    card = get_next_card(user_id)
+    print("Следующая карточка:", card)
