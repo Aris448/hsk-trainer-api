@@ -9,6 +9,8 @@ print("СЫРОЕ СОДЕРЖИМОЕ .env:")
 print(repr(raw_content))
 print("---конец---")
 # Ручной парсер .env вместо python-dotenv — на случай проблем с кодировкой
+import os
+
 def load_env_manually(filepath=".env"):
     """Локально читает .env вручную, если файл существует. На сервере (Railway) переменные уже в os.environ."""
     env_vars = {}
@@ -24,7 +26,7 @@ def load_env_manually(filepath=".env"):
 
 
 _local_env = load_env_manually()
-env = {**os.environ, **_local_env}  # локальный .env имеет приоритет при разработке
+env = {**os.environ, **_local_env}
 
 url = env.get("SUPABASE_URL")
 key = env.get("SUPABASE_SERVICE_KEY")
